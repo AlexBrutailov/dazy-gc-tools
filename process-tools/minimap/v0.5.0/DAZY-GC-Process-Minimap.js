@@ -1,5 +1,5 @@
 /*
- * DAZY — GC Process Minimap v0.6.0 BETA
+ * DAZY — GC Process Minimap v0.5.0 BETA
  *
  * Первая рабочая версия мини-карты для редактора процессов GetCourse.
  *
@@ -21,8 +21,8 @@
 (() => {
   'use strict';
 
-  const TOOL_KEY = 'gcProcessMinimapV060Beta';
-  const VERSION = '0.6.0 BETA';
+  const TOOL_KEY = 'gcProcessMinimapV050Beta';
+  const VERSION = '0.5.0 BETA';
 
   const SHARED_CONFIG =
     window.DAZY_PROCESS_TOOLS_CONFIG &&
@@ -62,7 +62,6 @@
     viewportPollMs: 120,
     minimumCanvasWidth: 260,
     minimumCanvasHeight: 150,
-    compactUi: SHARED_CONFIG.compactUi !== false,
   };
 
   const page = {
@@ -134,7 +133,7 @@
   const $ = window.jQuery;
 
   const SETTINGS_KEY =
-    `dazyGcProcessMinimapV060Beta:${page.accountId || 'account'}:` +
+    `dazyGcProcessMinimapV050Beta:${page.accountId || 'account'}:` +
     `${page.accountUserId || 'user'}`;
 
   function readSettings() {
@@ -158,7 +157,6 @@
     style: null,
 
     collapsed: Boolean(savedSettings.collapsed),
-    visible: savedSettings.visible !== false,
     showConnections: savedSettings.showConnections !== false,
     mapZoom: Math.max(
       1,
@@ -208,7 +206,6 @@
         SETTINGS_KEY,
         JSON.stringify({
           collapsed: state.collapsed,
-          visible: state.visible,
           showConnections: state.showConnections,
           mapZoom: state.mapZoom,
           panelLeft: state.panelLeft,
@@ -1678,26 +1675,6 @@
         color: #9eabb4;
         font-size: 11px;
       }
-
-      #dazy-gc-process-minimap.is-compact {
-        width: 286px;
-        padding: 10px;
-      }
-
-      #dazy-gc-process-minimap.is-compact canvas {
-        height: 190px;
-      }
-
-      #dazy-gc-process-minimap.is-compact .dazy-minimap-status,
-      #dazy-gc-process-minimap.is-compact .dazy-minimap-stats,
-      #dazy-gc-process-minimap.is-compact .dazy-minimap-help,
-      #dazy-gc-process-minimap.is-compact .dazy-minimap-version {
-        display: none;
-      }
-
-      #dazy-gc-process-minimap.is-hidden {
-        display: none !important;
-      }
     `;
 
     document.head.appendChild(style);
@@ -1716,12 +1693,11 @@
   function installPanel() {
     const panel = document.createElement('div');
     panel.id = 'dazy-gc-process-minimap';
-    panel.classList.toggle('is-compact', CONFIG.compactUi);
     panel.innerHTML = `
       <div class="dazy-minimap-head" data-role="drag-handle">
-        <span class="dazy-minimap-title">Мини-карта</span>
+        <span class="dazy-minimap-title">DAZY Process Minimap</span>
         <div class="dazy-minimap-head-actions">
-          <span class="dazy-minimap-version">DAZY</span>
+          <span class="dazy-minimap-version">v${VERSION}</span>
           <button
             type="button"
             data-role="collapse"
@@ -1769,7 +1745,6 @@
     document.body.appendChild(panel);
 
     state.panel = panel;
-    state.panel.classList.toggle('is-hidden', !state.visible);
     state.canvas = panel.querySelector('[data-role="canvas"]');
     state.context = state.canvas.getContext('2d', {
       alpha: false,
@@ -1929,19 +1904,6 @@
     }
   }
 
-  function setVisible(visible) {
-    state.visible = Boolean(visible);
-    state.panel?.classList.toggle('is-hidden', !state.visible);
-    saveSettings();
-
-    if (state.visible) {
-      markSceneDirty(0);
-      markViewportDirty();
-    }
-
-    return state.visible;
-  }
-
   function refresh() {
     if (state.destroyed) return false;
 
@@ -2030,10 +1992,6 @@
     },
     collapse: () => setCollapsed(true),
     expand: () => setCollapsed(false),
-    show: () => setVisible(true),
-    hide: () => setVisible(false),
-    toggle: () => setVisible(!state.visible),
-    isVisible: () => Boolean(state.visible),
     showConnections: enabled => {
       state.showConnections = Boolean(enabled);
 
@@ -2059,7 +2017,6 @@
         : null,
       scrollPosition: readScrollPosition(getScrollContainer()),
       collapsed: state.collapsed,
-      visible: state.visible,
     }),
     destroy,
   };
