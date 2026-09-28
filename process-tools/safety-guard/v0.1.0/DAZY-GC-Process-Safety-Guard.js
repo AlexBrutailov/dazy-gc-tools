@@ -1,5 +1,5 @@
 /*
- * DAZY — GC Process Safety Guard v0.1.0 BETA
+ * DAZY — GC Process Safety Guard v0.2.0 BETA
  *
  * Независимая страховка координат для редактора процессов GetCourse.
  * - блокирует случайное массовое перемещение сверх лимита;
@@ -12,8 +12,8 @@
 (() => {
   'use strict';
 
-  const TOOL_KEY = 'gcProcessSafetyGuardV010Beta';
-  const VERSION = '0.1.0 BETA';
+  const TOOL_KEY = 'gcProcessSafetyGuardV020Beta';
+  const VERSION = '0.2.0 BETA';
 
   try { window[TOOL_KEY]?.destroy?.(); } catch (_) {}
 
@@ -45,6 +45,8 @@
     baselineHistoryLimit: Math.max(1, Number(SHARED_CONFIG.baselineHistoryLimit) || 3),
     moveHistoryLimit: Math.max(1, Number(SHARED_CONFIG.moveHistoryLimit) || 10),
     requestTimeoutMs: Math.max(5000, Number(SHARED_CONFIG.requestTimeoutMs) || 20000),
+    managedUi: SHARED_CONFIG.managedUi === true,
+    snapshotGroupMoves: SHARED_CONFIG.snapshotGroupMoves !== false,
     debug: SHARED_CONFIG.debug === true,
   };
 
@@ -89,6 +91,12 @@
     permit: null,
     baselinePreview: null,
     movePreview: null,
+    moveCandidate: null,
+    lastStatus: {
+      message: 'Защита координат активна.',
+      tone: 'normal',
+      at: new Date().toISOString(),
+    },
     handlers: [],
   };
 
@@ -177,28 +185,44 @@
     return null;
   }
 
-  function captureSelectedSnapshot(ids, reason) {
+  function buildSelectedSnapshot(ids, reason) {
     const blocks = [];
     for (const id of ids) {
       const el = document.getElementById(`fwb${id}`);
       if (!el) continue;
       const pos = getBlockPosition(el);
-      blocks.push({ id: String(id), left: pos.left, top: pos.top, sectionId: findSectionId(id) });
+      blocks.push({
+        id: String(id),
+        left: pos.left,
+        top: pos.top,
+        sectionId: findSectionId(id),
+      });
     }
     if (!blocks.length) return null;
-    const snapshot = {
+
+    return {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       createdAt: new Date().toISOString(),
       processId: page.processId,
       reason,
       blocks,
     };
+  }
+
+  function storeMoveSnapshot(snapshot) {
+    if (!snapshot?.blocks?.length) return null;
     const history = readJson(MOVES_KEY, []);
     history.unshift(snapshot);
     history.splice(CONFIG.moveHistoryLimit);
     if (!writeJson(MOVES_KEY, history)) return null;
     updatePanel();
+    emitState();
     return snapshot;
+  }
+
+  function captureSelectedSnapshot(ids, reason) {
+    const snapshot = buildSelectedSnapshot(ids, reason);
+    return snapshot ? storeMoveSnapshot(snapshot) : null;
   }
 
   async function fetchServerSnapshot() {
@@ -367,10 +391,83 @@
     updatePanel();
   }
 
+  function publicState() {
+    const baseline = latestBaseline();
+    const move = latestMove();
+    const validPermit =
+      Boolean(state.permit) &&
+      Date.now() <= Number(state.permit?.expiresAt || 0);
+
+    return {
+      version: VERSION,
+      processId: page.processId,
+      massMoveLimit: CONFIG.massMoveLimit,
+      managedUi: CONFIG.managedUi,
+      pendingMassIds: [...state.pendingMassIds],
+      pendingMassCount: state.pendingMassIds.length,
+      permit: validPermit
+        ? {
+            ids: [...state.permit.ids],
+            count: state.permit.ids.length,
+            expiresAt: state.permit.expiresAt,
+          }
+        : null,
+      baseline: baseline
+        ? {
+            id: baseline.id,
+            capturedAt: baseline.capturedAt,
+            blockCount: baseline.blockCount,
+          }
+        : null,
+      moveHistoryCount: readJson(MOVES_KEY, []).length,
+      latestMove: move
+        ? {
+            id: move.id,
+            createdAt: move.createdAt,
+            count: move.blocks?.length || 0,
+            reason: move.reason || '',
+          }
+        : null,
+      baselineAudit: state.baselinePreview
+        ? {
+            moved: state.baselinePreview.diff?.moved?.length || 0,
+            missing: state.baselinePreview.diff?.missing?.length || 0,
+            added: state.baselinePreview.diff?.added?.length || 0,
+          }
+        : null,
+      movePreview: state.movePreview
+        ? {
+            changed: state.movePreview.changed?.length || 0,
+            missing: state.movePreview.missing?.length || 0,
+          }
+        : null,
+      lastStatus: { ...state.lastStatus },
+    };
+  }
+
+  function emitState() {
+    try {
+      document.dispatchEvent(
+        new CustomEvent('dazy:process-safety-state', {
+          detail: publicState(),
+        })
+      );
+    } catch (_) {}
+  }
+
   function setStatus(message, tone='normal') {
-    if (!state.statusEl) return;
-    state.statusEl.textContent = message;
-    state.statusEl.dataset.tone = tone;
+    state.lastStatus = {
+      message: String(message || ''),
+      tone,
+      at: new Date().toISOString(),
+    };
+
+    if (state.statusEl) {
+      state.statusEl.textContent = state.lastStatus.message;
+      state.statusEl.dataset.tone = tone;
+    }
+
+    emitState();
   }
 
   function flashBlocked(ids) {
@@ -411,34 +508,107 @@
   function handlePointerDown(event) {
     if (event.button !== 0 || event.shiftKey) return;
     if (event.target.closest?.('button,a,input,textarea,select,.jtk-endpoint,._jsPlumb_endpoint')) return;
+
     const block = event.target.closest?.('#flowchart .flowchart-block');
     if (!block || block.classList.contains('start-flowchart-block')) return;
 
     const selected = getSelectedIds();
     const clickedId = getBlockId(block);
-    const groupIds = selected.includes(clickedId) && selected.length ? selected : [clickedId];
-    if (groupIds.length <= CONFIG.massMoveLimit) return;
+    const groupIds =
+      selected.includes(clickedId) && selected.length
+        ? selected
+        : [clickedId];
 
-    if (permitMatches(groupIds)) {
-      const snapshot = captureSelectedSnapshot(groupIds, 'before-one-time-mass-move');
-      if (!snapshot) {
-        blockEvent(event);
-        setStatus('Перемещение заблокировано: snapshot не сохранился.', 'error');
-        return;
-      }
-      state.permit = null;
-      state.pendingMassIds = [];
-      updatePanel();
-      setStatus(`Страховочный snapshot сохранён. Разрешено перемещение ${groupIds.length} блоков.`, 'success');
+    // Для обычной группы 2..limit сохраняем candidate в памяти.
+    // В localStorage он попадёт только если после pointerup координаты реально изменились.
+    if (
+      CONFIG.snapshotGroupMoves &&
+      groupIds.length > 1 &&
+      groupIds.length <= CONFIG.massMoveLimit
+    ) {
+      state.moveCandidate = buildSelectedSnapshot(
+        groupIds,
+        'before-group-move'
+      );
       return;
     }
 
+    if (groupIds.length <= CONFIG.massMoveLimit) return;
+
+    if (permitMatches(groupIds)) {
+      const snapshot = captureSelectedSnapshot(
+        groupIds,
+        'before-one-time-mass-move'
+      );
+
+      if (!snapshot) {
+        blockEvent(event);
+        setStatus(
+          'Перемещение заблокировано: не удалось сохранить страховочную точку.',
+          'error'
+        );
+        return;
+      }
+
+      state.moveCandidate = null;
+      state.permit = null;
+      state.pendingMassIds = [];
+      updatePanel();
+      setStatus(
+        `Страховочная точка сохранена. Разрешён один перенос ${groupIds.length} блоков.`,
+        'success'
+      );
+      return;
+    }
+
+    state.moveCandidate = null;
     state.pendingMassIds = [...groupIds];
     state.permit = null;
     flashBlocked(groupIds);
     updatePanel();
-    setStatus(`Массовое перемещение заблокировано: ${groupIds.length} блоков.`, 'error');
+    setStatus(
+      `Выбрано ${groupIds.length} блоков. Для такого переноса нужно разовое разрешение.`,
+      'error'
+    );
     blockEvent(event);
+  }
+
+  function handlePointerUp() {
+    const candidate = state.moveCandidate;
+    state.moveCandidate = null;
+    if (!candidate?.blocks?.length) return;
+
+    // Guard загружается раньше Fast Editor и получает capture-pointerup первым.
+    // Даём нативному/proxy drag завершить перенос, затем сравниваем DOM.
+    window.setTimeout(() => {
+      if (state.destroyed) return;
+
+      let moved = false;
+
+      for (const before of candidate.blocks) {
+        const el = document.getElementById(`fwb${before.id}`);
+        if (!el) continue;
+        const after = getBlockPosition(el);
+
+        if (
+          Math.abs(after.left - before.left) > 0.5 ||
+          Math.abs(after.top - before.top) > 0.5
+        ) {
+          moved = true;
+          break;
+        }
+      }
+
+      if (!moved) return;
+
+      const stored = storeMoveSnapshot(candidate);
+      if (stored) {
+        setStatus(
+          `Сохранена точка отката группового переноса: ${candidate.blocks.length} блоков.`,
+          'success'
+        );
+      }
+    }, 80);
   }
 
   function fmtDate(value) {
@@ -446,7 +616,10 @@
   }
 
   function updatePanel() {
-    if (!state.panel) return;
+    if (!state.panel) {
+      emitState();
+      return;
+    }
     const baseline = latestBaseline();
     const move = latestMove();
     if (state.baselineEl) {
@@ -477,6 +650,8 @@
     if (hist) hist.textContent = move
       ? `Последний snapshot: ${move.blocks.length} блоков · ${fmtDate(move.createdAt)}`
       : 'Snapshot массовых переносов пока нет.';
+
+    emitState();
   }
 
   function installStyles() {
@@ -546,7 +721,12 @@
 
   function addDoc(type, fn, opts) { document.addEventListener(type,fn,opts); state.handlers.push({type,fn,opts}); }
 
-  installStyles(); installPanel(); addDoc('pointerdown', handlePointerDown, true);
+  installStyles();
+  if (!CONFIG.managedUi) installPanel();
+  addDoc('pointerdown', handlePointerDown, true);
+  addDoc('pointerup', handlePointerUp, true);
+  addDoc('pointercancel', handlePointerUp, true);
+
   window[TOOL_KEY] = {
     version: VERSION, config: CONFIG,
     createBaseline, auditBaseline, restoreBaseline,
@@ -555,8 +735,10 @@
     getBaseline: latestBaseline,
     getMoveHistory: () => readJson(MOVES_KEY, []),
     getPermit: () => state.permit ? { ...state.permit } : null,
+    getState: publicState,
     destroy,
   };
-  void ensureBaseline().catch(error => setStatus(`Baseline не создан: ${String(error?.message || error)}`, 'error'));
+  emitState();
+  void ensureBaseline().catch(error => setStatus(`Точка восстановления не создана: ${String(error?.message || error)}`, 'error'));
   console.info(`[DAZY Safety Guard v${VERSION}] запущен`, { processId: page.processId, massMoveLimit: CONFIG.massMoveLimit });
 })();
