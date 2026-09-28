@@ -1,5 +1,5 @@
 /*
- * DAZY — GC Process Tools Launcher v0.5.0 BETA
+ * DAZY — GC Process Tools Launcher v0.5.1 BETA
  * SMART project.
  *
  * В GetCourse остаётся только этот файл.
@@ -8,9 +8,9 @@
 (function () {
   'use strict';
 
-  var TOOL_KEY = 'gcProcessToolsLauncherV050Beta';
-  var BOOT_KEY = '__DAZY_PROCESS_TOOLS_LAUNCHER_BOOT_V050_BETA__';
-  var STORAGE_KEY = 'gc-process-tools-launcher-v050-beta';
+  var TOOL_KEY = 'gcProcessToolsLauncherV051Beta';
+  var BOOT_KEY = '__DAZY_PROCESS_TOOLS_LAUNCHER_BOOT_V051_BETA__';
+  var STORAGE_KEY = 'gc-process-tools-launcher-v051-beta';
 
   if (window[BOOT_KEY]) {
     console.info('[DAZY Process Tools] Повторный запуск лаунчера пропущен.');
@@ -60,6 +60,8 @@
     externalMoveGuard: true,
     managedUi: true,
     compactUi: true,
+    linkUiHostSelector:
+      '#gcptl-panel-v051 [data-role="link-ui-host"]',
 
     massMoveLimit: 16,
     massMovePermitTtlMs: 60000,
@@ -80,11 +82,11 @@
   var SCRIPT_URLS = {
     safetyGuard:
       GITHUB_BASE +
-      '/process-tools/safety-guard/v0.2.0/DAZY-GC-Process-Safety-Guard.js',
+      '/process-tools/safety-guard/v0.2.1/DAZY-GC-Process-Safety-Guard.js',
 
     fastEditor:
       GITHUB_BASE +
-      '/process-tools/fast-editor/v1.5.0/DAZY-GC-Process-Fast-Editor.js',
+      '/process-tools/fast-editor/v1.5.1/DAZY-GC-Process-Fast-Editor.js',
 
     minimap:
       GITHUB_BASE +
@@ -92,8 +94,8 @@
   };
 
   var GLOBAL_KEYS = {
-    safetyGuard: 'gcProcessSafetyGuardV020Beta',
-    fastEditor: 'gcProcessFastEditorV150Beta',
+    safetyGuard: 'gcProcessSafetyGuardV021Beta',
+    fastEditor: 'gcProcessFastEditorV151Beta',
     minimap: 'gcProcessMinimapV060Beta'
   };
 
@@ -105,6 +107,7 @@
     loading: false,
     statusTimer: null,
     safetyState: null,
+    activeOperation: '',
     handlers: []
   };
 
@@ -355,11 +358,18 @@
       var history =
         Number(safety.moveHistoryCount || 0);
 
-      undo.disabled = history < 1;
+      undo.disabled =
+        history < 1 ||
+        state.activeOperation === 'undo-group-move';
+
       undo.textContent =
-        history > 0
-          ? 'Отменить последний перенос группы'
-          : 'Нет переноса для отмены';
+        state.activeOperation === 'undo-group-move'
+          ? 'Отмена выполняется…'
+          : (
+              history > 0
+                ? 'Отменить последний перенос группы'
+                : 'Нет переноса для отмены'
+            );
     }
 
     var permit =
@@ -429,8 +439,17 @@
     }
   }
 
+  function nextPaint() {
+    return new Promise(resolve => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(resolve);
+      });
+    });
+  }
+
   async function undoLastGroupMove() {
     var guard = tool('safetyGuard');
+    var fast = tool('fastEditor');
 
     if (!guard) {
       setStatus(
@@ -441,41 +460,89 @@
       return;
     }
 
-    setStatus(
-      'Проверяю последний перенос…',
-      'loading'
-    );
-
-    await guard.previewLatestMoveRestore();
-
-    var preview =
-      guard.getState?.().movePreview;
-
-    if (!preview?.changed) {
-      setStatus(
-        'Координаты последнего переноса уже совпадают.',
-        'success',
-        2600
-      );
-      updateUi();
+    if (state.activeOperation) {
       return;
     }
 
-    await guard.restoreLatestMove();
-
-    setStatus(
-      'Последний перенос группы отменён.',
-      'success',
-      3000
-    );
-
+    state.activeOperation = 'undo-group-move';
     updateUi();
 
-    // После server restore локальная схема может ещё показывать старое положение.
-    // Штатная синхронизация только перечитает уже восстановленные координаты.
-    tool('fastEditor')?.fullSync?.(
-      'restore-last-group-move'
-    );
+    try {
+      setStatus(
+        'Отмена выполняется, пожалуйста, подождите…',
+        'loading'
+      );
+
+      // Даём браузеру реально отрисовать сообщение ДО тяжёлого запроса.
+      await nextPaint();
+
+      await guard.previewLatestMoveRestore();
+
+      var preview =
+        guard.getState?.().movePreview;
+
+      if (!preview?.changed) {
+        setStatus(
+          'Координаты последнего переноса уже совпадают.',
+          'success',
+          3200
+        );
+        return;
+      }
+
+      setStatus(
+        'Возвращаю координаты блоков. Не закрывайте страницу…',
+        'loading'
+      );
+
+      await nextPaint();
+
+      var result =
+        await guard.restoreLatestMove();
+
+      if (!result?.verified) {
+        setStatus(
+          'GetCourse ещё не подтвердил все координаты. Обновите страницу перед повторной попыткой.',
+          'warning',
+          5200
+        );
+        return;
+      }
+
+      setStatus(
+        'Координаты восстановлены. Обновляю блоки на схеме…',
+        'loading'
+      );
+
+      await nextPaint();
+
+      var localResult =
+        fast?.applyExternalCoordinateRestore?.(
+          result.restoredBlocks || []
+        ) || {
+          updated: 0,
+          missing: []
+        };
+
+      await nextPaint();
+
+      if (localResult.missing?.length) {
+        setStatus(
+          'Перенос отменён на сервере. Часть блоков не найдена в текущем DOM — обновите страницу.',
+          'warning',
+          5200
+        );
+      } else {
+        setStatus(
+          `Последний перенос отменён. Восстановлено блоков: ${result.restored || localResult.updated || 0}.`,
+          'success',
+          4200
+        );
+      }
+    } finally {
+      state.activeOperation = '';
+      updateUi();
+    }
   }
 
   async function auditBaseline() {
@@ -510,10 +577,10 @@
       document.createElement('style');
 
     style.id =
-      'gcptl-styles-v050-beta';
+      'gcptl-styles-v051-beta';
 
     style.textContent = `
-      #gcptl-panel-v050 {
+      #gcptl-panel-v051 {
         position: fixed;
         left: 18px;
         bottom: 18px;
@@ -528,38 +595,40 @@
         box-shadow: 0 12px 38px rgba(0,0,0,.36);
       }
 
-      #gcptl-panel-v050 * {
+      #gcptl-panel-v051 * {
         box-sizing: border-box;
       }
 
-      #gcptl-panel-v050 .gcptl-fab {
+      #gcptl-panel-v051 .gcptl-fab {
         display: none;
       }
 
-      #gcptl-panel-v050 .head {
+      #gcptl-panel-v051 .head {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 8px;
       }
 
-      #gcptl-panel-v050 .title {
+      #gcptl-panel-v051 .title {
         font-weight: 700;
         font-size: 13px;
+        cursor: pointer;
+        user-select: none;
       }
 
-      #gcptl-panel-v050 .collapse {
+      #gcptl-panel-v051 .gcptl-collapse-btn {
         width: 28px;
         height: 26px;
         margin: 0;
         padding: 0;
       }
 
-      #gcptl-panel-v050 .body {
+      #gcptl-panel-v051 .body {
         margin-top: 8px;
       }
 
-      #gcptl-panel-v050 button {
+      #gcptl-panel-v051 button {
         width: 100%;
         margin-top: 6px;
         padding: 8px 9px;
@@ -572,26 +641,26 @@
         font-size: 12px;
       }
 
-      #gcptl-panel-v050 button:hover {
+      #gcptl-panel-v051 button:hover {
         filter: brightness(1.08);
       }
 
-      #gcptl-panel-v050 button:disabled {
+      #gcptl-panel-v051 button:disabled {
         opacity: .48;
         cursor: default;
         filter: none;
       }
 
-      #gcptl-panel-v050 button.is-active {
+      #gcptl-panel-v051 button.is-active {
         background: #0d7138;
         border-color: rgba(74,222,128,.55);
       }
 
-      #gcptl-panel-v050 [data-role="permit"] {
+      #gcptl-panel-v051 [data-role="permit"] {
         background: #8a5b09;
       }
 
-      #gcptl-panel-v050 .status {
+      #gcptl-panel-v051 .status {
         margin-top: 7px;
         padding: 7px 8px;
         border-radius: 8px;
@@ -599,38 +668,38 @@
         color: #cbd5e1;
       }
 
-      #gcptl-panel-v050 .status[data-tone="success"] {
+      #gcptl-panel-v051 .status[data-tone="success"] {
         background: rgba(22,101,52,.42);
         color: #d1fae5;
       }
 
-      #gcptl-panel-v050 .status[data-tone="warning"] {
+      #gcptl-panel-v051 .status[data-tone="warning"] {
         background: rgba(146,92,8,.42);
         color: #fef3c7;
       }
 
-      #gcptl-panel-v050 .status[data-tone="error"] {
+      #gcptl-panel-v051 .status[data-tone="error"] {
         background: rgba(127,29,29,.55);
         color: #fee2e2;
       }
 
-      #gcptl-panel-v050 .status[data-tone="loading"] {
+      #gcptl-panel-v051 .status[data-tone="loading"] {
         background: rgba(76,29,149,.42);
         color: #ede9fe;
       }
 
-      #gcptl-panel-v050 .separator {
+      #gcptl-panel-v051 .separator {
         height: 1px;
         margin: 9px 0 3px;
         background: rgba(255,255,255,.1);
       }
 
-      #gcptl-panel-v050 .admin {
+      #gcptl-panel-v051 .admin {
         margin-top: 6px;
         padding-top: 2px;
       }
 
-      #gcptl-panel-v050.is-collapsed {
+      #gcptl-panel-v051.is-collapsed {
         width: 58px;
         height: 58px;
         padding: 0;
@@ -640,12 +709,12 @@
         box-shadow: 0 10px 28px rgba(0,0,0,.32);
       }
 
-      #gcptl-panel-v050.is-collapsed .head,
-      #gcptl-panel-v050.is-collapsed .body {
+      #gcptl-panel-v051.is-collapsed .head,
+      #gcptl-panel-v051.is-collapsed .body {
         display: none;
       }
 
-      #gcptl-panel-v050.is-collapsed .gcptl-fab {
+      #gcptl-panel-v051.is-collapsed .gcptl-fab {
         display: flex;
         width: 58px;
         height: 58px;
@@ -671,7 +740,7 @@
     var panel =
       document.createElement('div');
 
-    panel.id = 'gcptl-panel-v050';
+    panel.id = 'gcptl-panel-v051';
 
     panel.innerHTML = `
       <button
@@ -685,7 +754,7 @@
         <span class="title">DAZY</span>
         <button
           type="button"
-          class="collapse"
+          class="gcptl-collapse-btn"
           data-role="collapse"
           title="Свернуть"
         >−</button>
@@ -699,6 +768,8 @@
         <button type="button" data-role="links">
           Изменить связи блоков
         </button>
+
+        <div data-role="link-ui-host"></div>
 
         <button type="button" data-role="drag">
           Быстрое перемещение блоков
@@ -799,6 +870,22 @@
     panel
       .querySelector('[data-role="collapse"]')
       .addEventListener(
+        'click',
+        function () {
+          state.collapsed = true;
+          panel.classList.add(
+            'is-collapsed'
+          );
+          saveSetting(
+            'collapsed',
+            true
+          );
+        }
+      );
+
+    panel
+      .querySelector('.title')
+      ?.addEventListener(
         'click',
         function () {
           state.collapsed = true;
@@ -1092,6 +1179,11 @@
     state.safetyState =
       event?.detail || null;
 
+    if (state.activeOperation === 'undo-group-move') {
+      updateUi();
+      return;
+    }
+
     var message =
       String(
         state.safetyState
@@ -1241,7 +1333,7 @@
     );
 
     window[TOOL_KEY] = {
-      version: '0.5.0 BETA',
+      version: '0.5.1 BETA',
       role: isAdmin() ? 'admin' : 'staff',
       startAll: startAll,
       stopAll: stopAll,
@@ -1268,7 +1360,7 @@
     );
 
     console.info(
-      '[DAZY Process Tools Launcher v0.5.0 BETA] запущен',
+      '[DAZY Process Tools Launcher v0.5.1 BETA] запущен',
       {
         role: isAdmin()
           ? 'admin'
