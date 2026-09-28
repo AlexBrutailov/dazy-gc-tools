@@ -1,5 +1,5 @@
 /*
- * DAZY — GC Process Tools Launcher v0.5.1 BETA
+ * DAZY — GC Process Tools Launcher v0.5.2 BETA
  * SMART project.
  *
  * В GetCourse остаётся только этот файл.
@@ -8,9 +8,9 @@
 (function () {
   'use strict';
 
-  var TOOL_KEY = 'gcProcessToolsLauncherV051Beta';
-  var BOOT_KEY = '__DAZY_PROCESS_TOOLS_LAUNCHER_BOOT_V051_BETA__';
-  var STORAGE_KEY = 'gc-process-tools-launcher-v051-beta';
+  var TOOL_KEY = 'gcProcessToolsLauncherV052Beta';
+  var BOOT_KEY = '__DAZY_PROCESS_TOOLS_LAUNCHER_BOOT_V052_BETA__';
+  var STORAGE_KEY = 'gc-process-tools-launcher';
 
   if (window[BOOT_KEY]) {
     console.info('[DAZY Process Tools] Повторный запуск лаунчера пропущен.');
@@ -938,16 +938,32 @@
           var fast = tool('fastEditor');
           if (!fast) return;
 
-          if (
-            fast.getUiState?.()
-              .lightDragEnabled
-          ) {
-            fast.disableLightDrag?.();
-          } else {
+          var nextEnabled =
+            !Boolean(
+              fast.getUiState?.()
+                .lightDragEnabled
+            );
+
+          if (nextEnabled) {
             fast.enableLightDrag?.();
+          } else {
+            fast.disableLightDrag?.();
           }
 
+          saveSetting(
+            'fastDragEnabled',
+            nextEnabled
+          );
+
           updateUi();
+
+          setStatus(
+            nextEnabled
+              ? 'Быстрое перемещение включено.'
+              : 'Быстрое перемещение выключено.',
+            'success',
+            1800
+          );
         }
       );
 
@@ -1262,8 +1278,21 @@
         // не нужна отдельная кнопка для её включения.
         fast?.enableFastSave?.();
 
-        // Быстрое перемещение пользователь включает сам.
-        fast?.disableLightDrag?.();
+        // Быстрое перемещение включено по умолчанию.
+        // После первого ручного переключения запоминаем выбор пользователя.
+        var fastDragEnabled =
+          readSetting(
+            'fastDragEnabled',
+            true
+          );
+
+        if (fastDragEnabled) {
+          fast?.enableLightDrag?.();
+        } else {
+          fast?.disableLightDrag?.();
+        }
+
+        // Изменение связей по-прежнему включается только вручную.
         fast?.disableLinks?.();
 
         updateUi();
@@ -1333,7 +1362,7 @@
     );
 
     window[TOOL_KEY] = {
-      version: '0.5.1 BETA',
+      version: '0.5.2 BETA',
       role: isAdmin() ? 'admin' : 'staff',
       startAll: startAll,
       stopAll: stopAll,
@@ -1360,7 +1389,7 @@
     );
 
     console.info(
-      '[DAZY Process Tools Launcher v0.5.1 BETA] запущен',
+      '[DAZY Process Tools Launcher v0.5.2 BETA] запущен',
       {
         role: isAdmin()
           ? 'admin'
