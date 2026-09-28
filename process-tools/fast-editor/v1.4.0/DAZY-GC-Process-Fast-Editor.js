@@ -1,5 +1,5 @@
 /*
- * DAZY — GC Process Fast Editor v1.4.0 BETA
+ * DAZY — GC Process Fast Editor v1.5.0 BETA
  *
  * Назначение:
  * 1) Отключает автоматическую live-проверку условий в модальном окне блока.
@@ -42,9 +42,9 @@
 (() => {
   'use strict';
 
-  const TOOL_KEY = 'gcProcessFastEditorV140Beta';
-  const VERSION = '1.4.0 BETA';
-  const LEGACY_TOOL_KEYS = ['gcProcessFastEditorV01', 'gcProcessFastEditorV02', 'gcProcessFastEditorV03', 'gcProcessFastEditorV04', 'gcProcessFastEditorV041', 'gcProcessFastEditorV05', 'gcProcessFastEditorV06', 'gcProcessFastEditorV061', 'gcProcessFastEditorV07', 'gcProcessFastEditorV10', 'gcProcessFastEditorV11', 'gcProcessFastEditorV12', 'gcProcessFastEditorV121', 'gcProcessFastEditorV122', 'gcProcessFastEditorV123', 'gcProcessFastEditorV124', 'gcProcessFastEditorV125', 'gcProcessFastEditorV126', 'gcProcessFastEditorV127', 'gcProcessFastEditorV128', 'gcProcessFastEditorV129', 'gcProcessFastEditorV130Safe', 'gcProcessFastEditorV131Safe', 'gcProcessFastEditorV132Safe', 'gcProcessFastEditorV140Beta'];
+  const TOOL_KEY = 'gcProcessFastEditorV150Beta';
+  const VERSION = '1.5.0 BETA';
+  const LEGACY_TOOL_KEYS = ['gcProcessFastEditorV01', 'gcProcessFastEditorV02', 'gcProcessFastEditorV03', 'gcProcessFastEditorV04', 'gcProcessFastEditorV041', 'gcProcessFastEditorV05', 'gcProcessFastEditorV06', 'gcProcessFastEditorV061', 'gcProcessFastEditorV07', 'gcProcessFastEditorV10', 'gcProcessFastEditorV11', 'gcProcessFastEditorV12', 'gcProcessFastEditorV121', 'gcProcessFastEditorV122', 'gcProcessFastEditorV123', 'gcProcessFastEditorV124', 'gcProcessFastEditorV125', 'gcProcessFastEditorV126', 'gcProcessFastEditorV127', 'gcProcessFastEditorV128', 'gcProcessFastEditorV129', 'gcProcessFastEditorV130Safe', 'gcProcessFastEditorV131Safe', 'gcProcessFastEditorV132Safe', 'gcProcessFastEditorV140Beta', 'gcProcessFastEditorV150Beta'];
 
   LEGACY_TOOL_KEYS.forEach(key => {
     if (window[key]?.destroy) {
@@ -98,6 +98,7 @@
     requestTimeoutMs: Number(SHARED_CONFIG.requestTimeoutMs) || 20000,
     oneTestTimeoutMs: Number(SHARED_CONFIG.oneTestTimeoutMs) || 20000,
     syncTimeoutMs: Number(SHARED_CONFIG.syncTimeoutMs) || 45000,
+    managedUi: SHARED_CONFIG.managedUi === true,
     debug: SHARED_CONFIG.debug === true,
   };
 
@@ -129,7 +130,7 @@
   }
 
   const SETTINGS_KEY =
-    `dazyGcProcessFastEditorV140Beta:${page.accountId || 'account'}:${page.accountUserId || 'user'}:${page.processId}`;
+    `dazyGcProcessFastEditorV150Beta:${page.accountId || 'account'}:${page.accountUserId || 'user'}:${page.processId}`;
 
   function readSettings() {
     try {
@@ -6393,8 +6394,10 @@
   }
 
   installStyles();
-  installPanel();
-  setPanelCollapsed(state.panelCollapsed, false);
+  if (!CONFIG.managedUi) {
+    installPanel();
+    setPanelCollapsed(state.panelCollapsed, false);
+  }
   toggleFastSave(state.fastSaveEnabled);
   toggleLightDrag(state.lightDragEnabled);
   toggleEdgePan(state.edgePanEnabled);
@@ -6501,6 +6504,14 @@
           : document.getElementById(`fwb${String(blockOrId || '').replace(/^fwb/, '')}`);
       return blockEl ? resolveBlockSectionContext(blockEl) : null;
     },
+    getUiState: () => ({
+      linkMode: state.linkMode,
+      fastSaveEnabled: state.fastSaveEnabled,
+      lightDragEnabled: state.lightDragEnabled,
+      edgePanEnabled: state.edgePanEnabled,
+      localChanges: state.localChanges,
+      busy: state.busy,
+    }),
     getSettings: () => ({
       fastSaveEnabled: state.fastSaveEnabled,
       lightDragEnabled: state.lightDragEnabled,
