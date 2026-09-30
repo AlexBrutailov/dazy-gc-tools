@@ -1,5 +1,5 @@
 /*
- * DAZY — GC Process Tools Launcher v0.5.2 BETA
+ * DAZY — GC Process Tools Launcher v0.5.4 BETA
  * SMART project.
  *
  * В GetCourse остаётся только этот файл.
@@ -8,8 +8,8 @@
 (function () {
   'use strict';
 
-  var TOOL_KEY = 'gcProcessToolsLauncherV052Beta';
-  var BOOT_KEY = '__DAZY_PROCESS_TOOLS_LAUNCHER_BOOT_V052_BETA__';
+  var TOOL_KEY = 'gcProcessToolsLauncherV054Beta';
+  var BOOT_KEY = '__DAZY_PROCESS_TOOLS_LAUNCHER_BOOT_V054_BETA__';
   var STORAGE_KEY = 'gc-process-tools-launcher';
 
   if (window[BOOT_KEY]) {
@@ -21,20 +21,25 @@
 
   var TARGET_PAGE = {
     origin: 'https://course.smart-child.ru',
-    pathname: '/pl/tasks/mission/process',
-    processIds: ['2592961']
+    pathname: '/pl/tasks/mission/process'
   };
 
   var ACCESS_CONFIG = {
     allowedUserIds: [
       355017780,
       95427939,
-      141682633
+      141682633, 
+      266899178,
+      446512227,
+	  346514930, 
+      337834407,
+      290064842,
+      290155193,
+      289431002
     ],
 
     /*
-      Админский интерфейс увидят только эти пользователи.
-      Остальные allowedUserIds получат упрощённую рабочую панель.
+      Админский интерфейс необязателен* увидят только эти пользователи.
     */
     adminUserIds: [
       355017780
@@ -51,11 +56,11 @@
   window.DAZY_PROCESS_TOOLS_CONFIG = {
     allowedUserIds: ACCESS_CONFIG.allowedUserIds.slice(),
     allowedAccountIds: ACCESS_CONFIG.allowedAccountIds.slice(),
-    allowedProcessIds: TARGET_PAGE.processIds.slice(),
+    allowedProcessIds: [],
 
     allowAnyUser: false,
     allowAnyAccount: false,
-    allowAnyProcess: false,
+    allowAnyProcess: true,
 
     externalMoveGuard: true,
     managedUi: true,
@@ -86,7 +91,7 @@
 
     fastEditor:
       GITHUB_BASE +
-      '/process-tools/fast-editor/v1.5.1/DAZY-GC-Process-Fast-Editor.js',
+      '/process-tools/fast-editor/v1.5.2/DAZY-GC-Process-Fast-Editor.js',
 
     minimap:
       GITHUB_BASE +
@@ -95,7 +100,7 @@
 
   var GLOBAL_KEYS = {
     safetyGuard: 'gcProcessSafetyGuardV021Beta',
-    fastEditor: 'gcProcessFastEditorV151Beta',
+    fastEditor: 'gcProcessFastEditorV152Beta',
     minimap: 'gcProcessMinimapV060Beta'
   };
 
@@ -118,7 +123,7 @@
   var allowedPage =
     currentUrl.origin === TARGET_PAGE.origin &&
     currentUrl.pathname === TARGET_PAGE.pathname &&
-    TARGET_PAGE.processIds.indexOf(currentProcessId) !== -1;
+    /^\d+$/.test(String(currentProcessId || ''));
 
   if (!allowedPage) {
     console.info(
@@ -1362,7 +1367,7 @@
     );
 
     window[TOOL_KEY] = {
-      version: '0.5.2 BETA',
+      version: '0.5.4 BETA',
       role: isAdmin() ? 'admin' : 'staff',
       startAll: startAll,
       stopAll: stopAll,
@@ -1389,7 +1394,7 @@
     );
 
     console.info(
-      '[DAZY Process Tools Launcher v0.5.2 BETA] запущен',
+      '[DAZY Process Tools Launcher v0.5.4 BETA] запущен',
       {
         role: isAdmin()
           ? 'admin'

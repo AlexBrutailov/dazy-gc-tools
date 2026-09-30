@@ -1,9 +1,28 @@
-# DAZY GC Process Tools — launcher update v0.3.1
+# DAZY GC Process Tools — update v0.3.2
 
-Only SMART Launcher changed.
+Изменены только Fast Editor и SMART Launcher.
 
-- Launcher: v0.5.2 BETA
-- Fast movement is ON by default.
-- The user's last fast-movement choice is persisted in localStorage.
-- Link editing remains OFF by default.
-- Safety Guard / Fast Editor / Minimap versions are unchanged.
+## Fast Editor v1.5.2
+
+Исправлена ручная проверка сегмента.
+
+После «Проверить сегмент» Fast Editor теперь сохраняет штатную ссылку GetCourse
+на получившиеся объекты (заказы / пользователи и т. п.) до повторного отключения
+live-проверки.
+
+В панели отображается кликабельный результат:
+
+`Результат: 9556 заказов`
+
+Ссылка открывается в новой вкладке с тем же фильтром, который вернул GetCourse.
+
+Автоматическая проверка сегмента остаётся выключенной.
+
+## Launcher v0.5.4 BETA
+
+Обновлена только версия Fast Editor:
+`v1.5.1` → `v1.5.2`.
+
+Остальные инструменты остаются:
+- Safety Guard v0.2.1
+- Minimap v0.6.0
