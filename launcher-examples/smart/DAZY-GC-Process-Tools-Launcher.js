@@ -91,7 +91,7 @@
 
     fastEditor:
       GITHUB_BASE +
-      '/process-tools/fast-editor/v1.5.2/DAZY-GC-Process-Fast-Editor.js',
+      '/process-tools/fast-editor/v1.5.3/DAZY-GC-Process-Fast-Editor.js',
 
     minimap:
       GITHUB_BASE +
@@ -100,7 +100,7 @@
 
   var GLOBAL_KEYS = {
     safetyGuard: 'gcProcessSafetyGuardV021Beta',
-    fastEditor: 'gcProcessFastEditorV152Beta',
+    fastEditor: 'gcProcessFastEditorV153Beta',
     minimap: 'gcProcessMinimapV060Beta'
   };
 
